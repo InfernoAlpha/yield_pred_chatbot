@@ -155,7 +155,7 @@ def train(model,train_dataloader,epochs=20,lr=0.001,device = "cuda" if torch.cud
     writer.flush()
     writer.close()
 
-    torch.save(model.state_dict(),"model2.pth")
+    torch.save(model.state_dict(),"model1.pth")
     return model
 
 if __name__ == "__main__":

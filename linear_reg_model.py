@@ -73,7 +73,7 @@ class linear_reg(nn.Module):
         x = self.linear4(x)
         return x
 
-def check_accuracy(model,loader,device = "cuda" if torch.cuda.is_available() else "cpu"):
+def R2_score(model,loader,device = "cuda" if torch.cuda.is_available() else "cpu"):
     model = model.to(device)
     model.eval()
     all_targets = []
@@ -89,7 +89,7 @@ def check_accuracy(model,loader,device = "cuda" if torch.cuda.is_available() els
     score = r2_score(all_targets, all_preds)
     return score
 
-def log_confusion_matrix(model, loader, writer, epoch, device):
+def log_regression_plot(model, loader, writer, epoch, device):
     model.eval()
     all_preds = []
     all_targets = []
@@ -104,23 +104,18 @@ def log_confusion_matrix(model, loader, writer, epoch, device):
     preds = torch.cat(all_preds).numpy()
     targets = torch.cat(all_targets).numpy()
 
-    bins = [0, 0.33, 0.66, 1.0]
-    
-    pred_bins = np.digitize(preds, bins) - 1
-    target_bins = np.digitize(targets, bins) - 1
-
-    pred_bins = np.clip(pred_bins, 0, 2)
-    target_bins = np.clip(target_bins, 0, 2)
-
-    cm = confusion_matrix(target_bins, pred_bins)
-
     figure = plt.figure(figsize=(8, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=['Low', 'Medium', 'High'], 
-                yticklabels=['Low', 'Medium', 'High'])
-    plt.xlabel('Predicted Yield')
-    plt.ylabel('Actual Yield')
-    plt.title(f'Confusion Matrix (Epoch {epoch})')
+    plt.scatter(targets, preds, alpha=0.5, color='blue')
+    
+    limit_min = min(targets.min(), preds.min())
+    limit_max = max(targets.max(), preds.max())
+    plt.plot([limit_min, limit_max], [limit_min, limit_max], 'r--', label='Perfect Prediction')
+    
+    plt.xlabel('Actual Yield (Normalized)')
+    plt.ylabel('Predicted Yield (Normalized)')
+    plt.title(f'Actual vs Predicted (Epoch {epoch})')
+    plt.legend()
+    plt.grid(True)
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
@@ -129,7 +124,7 @@ def log_confusion_matrix(model, loader, writer, epoch, device):
     image = Image.open(buf)
     image_tensor = torch.tensor(np.array(image)).permute(2, 0, 1)
 
-    writer.add_image("Evaluation/Confusion_Matrix", image_tensor, epoch)
+    writer.add_image("Evaluation/Regression_Plot", image_tensor, epoch)
 
 def train(model,train_dataloader,epochs=20,lr=0.001,device = "cuda" if torch.cuda.is_available() else "cpu"):
     model = model.to(device)
@@ -151,12 +146,12 @@ def train(model,train_dataloader,epochs=20,lr=0.001,device = "cuda" if torch.cud
             writer.add_scalar("Loss/Batch",loss.item(),batch)
             batch += 1
             epoch_loss += loss.item()
-        log_confusion_matrix(model, test_dataloader, writer, epoch, device)
+        log_regression_plot(model, test_dataloader, writer, epoch, device)
         print(f"epoch:{epoch},loss:{loss}")
         avg_loss = epoch_loss / len(train_dataloader)
         writer.add_scalar("Loss/Epoch",avg_loss,epoch)
-        test_score = check_accuracy(model, test_dataloader, device)
-        writer.add_scalar("accuracy/Test", test_score, epoch)
+        test_score = R2_score(model, test_dataloader, device)
+        writer.add_scalar("R2_score/Test", test_score, epoch)
     writer.flush()
     writer.close()
 
@@ -173,20 +168,35 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(dataset=test_data,shuffle=True,batch_size=128)
     model = linear_reg(25,1)
     #model = train(model,train_dataloader)
-    print(check_accuracy(model=model,loader=test_dataloader))
-    model.load_state_dict(torch.load("model2.pth"))
+    #print(R2_score(model=model,loader=test_dataloader))
+    model.load_state_dict(torch.load("model1.pth",weights_only=True))
     encoder = joblib.load("onehotencoder.pkl")
-    scale = joblib.load("minmaxscale2.pkl")
-    
-    for x,y in test_dataloader:
-        data1 = x
-        data_pred = y
-        break
+    scale = joblib.load("minmaxscale1.pkl")
+    target = joblib.load("minmaxscale2.pkl")
 
-    print(data1)
-    print(data_pred)
-    y_pred = model(data1.to("cuda"))
-    print(y_pred)
-    print(scale.inverse_transform(y_pred.cpu().detach().numpy()))
-    print("---------------------------------------")
-    print(scale.inverse_transform(data_pred.reshape(-1, 1).detach().numpy()))
+    raw_data = {
+        'Region': ['West'],
+        'Soil_Type': ['Sandy'],
+        'Crop': ['Cotton'],
+        'Weather_Condition': ['Cloudy'],
+        'Fertilizer_Used': [False], 
+        'Irrigation_Used': [True],
+        'Rainfall_mm': [897.0772391101236],
+        'Temperature_Celsius': [27.676966373377603]
+    }
+    
+    df = pd.DataFrame(raw_data)
+    colu = ['Region', 'Soil_Type', 'Crop', 'Weather_Condition','Fertilizer_Used','Irrigation_Used']
+    numeric_cols = ["Rainfall_mm", "Temperature_Celsius"]
+    enc_colu = encoder.transform(df[colu])
+    enc_df = pd.DataFrame(enc_colu,columns=encoder.get_feature_names_out(colu))
+
+    feature_df = pd.concat([enc_df, df[numeric_cols]], axis=1)
+
+    norm_features = scale.transform(feature_df)
+
+    X = torch.tensor(norm_features.astype(np.float32))
+    model.eval()
+    y = model(X)
+
+    print(f"predicted yield:{target.inverse_transform(y.cpu().detach().numpy())[0][0]}")

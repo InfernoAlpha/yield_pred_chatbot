@@ -33,17 +33,6 @@ class sih_tool_scheme(BaseModel):
 search_tool = DuckDuckGoSearchRun(region = "in-en")
 
 @tool
-def mental_health_advice(message:str):
-    """
-    use this tool when the user is haveing any sucidal thoughts,mental stress,bullying or other types of mental issues 
-    gives a mental health advice based on the given message 
-    """
-    model = ChatOllama(model="medllama2:7b-q5_K_M")
-    promt = PromptTemplate(template="give an empathetic and supportive answer to this {msg} make sure to be understanding and ask about the situation rather than produceing a monotonus response",input_variables=['msg'])
-    chain = promt | model | StrOutputParser()
-    return chain.invoke({"messeges":message})
-
-@tool
 def yield_pred(data:sih_tool_scheme):
     """
     Predict crop yield in tons per hectare given environmental and farming conditions.
@@ -51,16 +40,8 @@ def yield_pred(data:sih_tool_scheme):
     y_pred = predict_crop_yield(data.model_dump())
     return {'predicted_yield_tons_per_hectare':y_pred}
     
-    
-"""def cond(state:llm_state):
-    msg = state["messages"][-1]
-    if msg.name == "mental_health_advice":
-        return "end"
-    else:
-        return "continue"
-"""
 
-tools  = [search_tool,mental_health_advice,yield_pred]
+tools  = [search_tool,yield_pred]
 tool_node = ToolNode(tools)
 
 def llm_node(state:llm_state)->llm_state:

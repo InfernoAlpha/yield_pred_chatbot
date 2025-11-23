@@ -1,0 +1,7 @@
+__pycache__/
+*.log
+*.csv
+*.pt
+.git/
+.env
+*.db

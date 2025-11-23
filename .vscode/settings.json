@@ -1,0 +1,5 @@
+{
+    "chat.agent.enabled": false,
+    "editor.inlineSuggest.syntaxHighlightingEnabled": false,
+    "editor.inlineSuggest.triggerCommandOnProviderChange": false
+}
